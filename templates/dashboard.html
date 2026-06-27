@@ -1,0 +1,458 @@
+{% extends "base.html" %}
+
+{% block title %}{{ company_name }} ({{ ticker }}) — Vitta Analysis{% endblock %}
+{% block description %}Financial statement analysis for {{ company_name }} ({{ ticker }}). Ratios, linked statements, and earnings quality checks.{% endblock %}
+
+{% block content %}
+<!-- ===== DASHBOARD HEADER ===== -->
+<div class="dash-header">
+  <div class="dash-header-inner">
+    <div class="dash-breadcrumb">
+      <a href="{{ url_for('index') }}">← Back to Search</a>
+    </div>
+    <div class="dash-title-row">
+      <div class="dash-title-block">
+        <h1 class="dash-company-name">{{ company_name }}</h1>
+        <div class="dash-meta">
+          <span class="dash-ticker-badge">{{ ticker }}</span>
+          <span class="dash-sector-badge">{{ ratios.sector_label }}</span>
+          {% if info.get('industry') %}
+          <span class="dash-industry">{{ info.industry }}</span>
+          {% endif %}
+        </div>
+        <div class="dash-source-note">
+          Data source: Yahoo Finance (yfinance) · As of {{ as_of }} · Figures in ₹ Crore
+        </div>
+      </div>
+      <a href="{{ url_for('report', ticker=ticker) }}" class="pdf-btn" id="downloadPdfBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        Download PDF Report
+      </a>
+    </div>
+  </div>
+</div>
+
+<!-- ===== METRIC CARDS ===== -->
+<div class="section-container">
+  <div class="metric-cards-grid">
+    <!-- Revenue -->
+    <div class="metric-card" id="metricRevenue">
+      <div class="metric-card-header">
+        <span class="metric-label">Total Revenue</span>
+        <svg class="metric-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>
+        </svg>
+      </div>
+      <div class="metric-value">{{ revenue }}</div>
+      {% if revenue_yoy is not none %}
+      <div class="metric-delta {{ 'delta-up' if revenue_yoy >= 0 else 'delta-down' }}">
+        {{ '+' if revenue_yoy >= 0 else '' }}{{ revenue_yoy }}% YoY
+      </div>
+      {% else %}
+      <div class="metric-delta delta-neutral">YoY data unavailable</div>
+      {% endif %}
+      <div class="metric-period">{{ periods[0] if periods else '—' }}</div>
+    </div>
+
+    <!-- Net Income -->
+    <div class="metric-card" id="metricNetIncome">
+      <div class="metric-card-header">
+        <span class="metric-label">Net Income</span>
+        <svg class="metric-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
+        </svg>
+      </div>
+      <div class="metric-value">{{ net_income }}</div>
+      {% if net_income_yoy is not none %}
+      <div class="metric-delta {{ 'delta-up' if net_income_yoy >= 0 else 'delta-down' }}">
+        {{ '+' if net_income_yoy >= 0 else '' }}{{ net_income_yoy }}% YoY
+      </div>
+      {% else %}
+      <div class="metric-delta delta-neutral">YoY data unavailable</div>
+      {% endif %}
+      <div class="metric-period">{{ periods[0] if periods else '—' }}</div>
+    </div>
+
+    <!-- Operating Cash Flow -->
+    <div class="metric-card" id="metricOCF">
+      <div class="metric-card-header">
+        <span class="metric-label">Operating Cash Flow</span>
+        <svg class="metric-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M12 22V12m0 0V2m0 10H2m10 0h10"/><circle cx="12" cy="12" r="3"/>
+        </svg>
+      </div>
+      <div class="metric-value">{{ ocf }}</div>
+      {% if ocf_yoy is not none %}
+      <div class="metric-delta {{ 'delta-up' if ocf_yoy >= 0 else 'delta-down' }}">
+        {{ '+' if ocf_yoy >= 0 else '' }}{{ ocf_yoy }}% YoY
+      </div>
+      {% else %}
+      <div class="metric-delta delta-neutral">YoY data unavailable</div>
+      {% endif %}
+      <div class="metric-period">{{ periods[0] if periods else '—' }}</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== VALIDATION CHECKS ===== -->
+<div class="section-container">
+  <div class="section-header">
+    <h2 class="section-title">Cross-Statement Linkage Validation</h2>
+    <p class="section-subtitle">Automated checks verifying internal consistency of financial statements</p>
+  </div>
+  <div class="checks-grid">
+    {% for check in checks %}
+    <div class="check-card check-{{ check.status }}">
+      <div class="check-icon-wrap">
+        {% if check.status == 'pass' %}
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+        {% elif check.status == 'fail' %}
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+        {% else %}
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        {% endif %}
+      </div>
+      <div class="check-content">
+        <div class="check-name">{{ check.name }}</div>
+        <div class="check-status-label">
+          {% if check.status == 'pass' %}✓ Pass
+          {% elif check.status == 'fail' %}✗ Failed
+          {% else %}? Unable to Verify
+          {% endif %}
+        </div>
+        <div class="check-message">{{ check.message }}</div>
+        {% if check.detail %}
+        <div class="check-detail">{{ check.detail }}</div>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- ===== TREND CHART ===== -->
+<div class="section-container">
+  <div class="section-header">
+    <h2 class="section-title">Multi-Year Financial Trends</h2>
+    <p class="section-subtitle">Revenue and Net Income over the last {{ periods|length }} fiscal years</p>
+  </div>
+  <div class="chart-card">
+    <div class="chart-tabs" role="tablist">
+      <button class="chart-tab active" id="tabRevNI" onclick="switchChart('revni')" role="tab" aria-selected="true">Revenue vs Net Income</button>
+      <button class="chart-tab" id="tabAssetsLiab" onclick="switchChart('assetliab')" role="tab" aria-selected="false">Assets vs Liabilities</button>
+    </div>
+    <div class="chart-wrapper">
+      <canvas id="chartRevNI" aria-label="Revenue and Net Income trend chart"></canvas>
+      <canvas id="chartAssetsLiab" class="hidden" aria-label="Assets and Liabilities trend chart"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- ===== CONNECTED STATEMENTS ===== -->
+<div class="section-container">
+  <div class="section-header">
+    <h2 class="section-title">Connected Financial Statements</h2>
+    <p class="section-subtitle">
+      Click a linkage type below to highlight the connection across statements and trace how numbers flow
+    </p>
+  </div>
+
+  <!-- Connection buttons -->
+  <div class="connection-buttons" id="connectionButtons" role="group" aria-label="Statement linkage selector">
+    <button class="conn-btn" id="connBtnNI"   data-conn="net_income"    onclick="showConnection('net_income')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+      Net Income
+    </button>
+    <button class="conn-btn" id="connBtnDA"   data-conn="depreciation"  onclick="showConnection('depreciation')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
+      Depreciation
+    </button>
+    <button class="conn-btn" id="connBtnWC"   data-conn="working_cap"   onclick="showConnection('working_cap')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+      Working Capital
+    </button>
+    <button class="conn-btn" id="connBtnDiv"  data-conn="dividends"     onclick="showConnection('dividends')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+      Dividends
+    </button>
+    <button class="conn-btn" id="connBtnCash" data-conn="cash_tieout"   onclick="showConnection('cash_tieout')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+      Cash Tie-Out
+    </button>
+  </div>
+
+  <!-- Connection caption -->
+  <div class="conn-caption" id="connCaption">
+    Select a linkage type above to see how numbers flow between the financial statements.
+  </div>
+
+  <!-- The 2×2 statement grid — SVG overlay is injected by JS -->
+  <div class="statements-grid-wrapper" id="statementsGridWrapper">
+    <svg id="connectionSvg" class="connection-svg" aria-hidden="true"></svg>
+
+    <div class="statements-grid" id="statementsGrid">
+
+      <!-- INCOME STATEMENT -->
+      <div class="stmt-card" id="stmtIncome">
+        <div class="stmt-card-header" style="--accent: #6366F1;">
+          <span class="stmt-title">Income Statement</span>
+          <span class="stmt-period">{{ periods[0] if periods else '' }}</span>
+        </div>
+        <div class="stmt-body">
+          <div class="stmt-row" id="is-revenue">
+            <span class="stmt-row-label">Total Revenue</span>
+            <span class="stmt-row-value">{{ fc(conn.is_revenue) }}</span>
+          </div>
+          <div class="stmt-row" id="is-cogs">
+            <span class="stmt-row-label">Cost of Revenue</span>
+            <span class="stmt-row-value">{{ fc(conn.is_cogs) }}</span>
+          </div>
+          <div class="stmt-row stmt-subtotal" id="is-gross">
+            <span class="stmt-row-label">Gross Profit</span>
+            <span class="stmt-row-value">{{ fc(conn.is_gross_profit) }}</span>
+          </div>
+          <div class="stmt-row" id="is-da-label">
+            <span class="stmt-row-label">D&amp;A</span>
+            <span class="stmt-row-value">{{ fc(conn.is_da) }}</span>
+          </div>
+          <div class="stmt-row" id="is-interest">
+            <span class="stmt-row-label">Interest Expense</span>
+            <span class="stmt-row-value">{{ fc(conn.is_interest) }}</span>
+          </div>
+          <div class="stmt-row" id="is-tax">
+            <span class="stmt-row-label">Tax Expense</span>
+            <span class="stmt-row-value">{{ fc(conn.is_tax) }}</span>
+          </div>
+          <div class="stmt-row stmt-total" id="is-ni">
+            <span class="stmt-row-label">Net Income</span>
+            <span class="stmt-row-value">{{ fc(conn.is_ni) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- BALANCE SHEET -->
+      <div class="stmt-card" id="stmtBalance">
+        <div class="stmt-card-header" style="--accent: #06B6D4;">
+          <span class="stmt-title">Balance Sheet</span>
+          <span class="stmt-period">{{ periods[0] if periods else '' }}</span>
+        </div>
+        <div class="stmt-body">
+          <div class="stmt-section-label">Assets</div>
+          <div class="stmt-row" id="bs-cash">
+            <span class="stmt-row-label">Cash &amp; Equivalents</span>
+            <span class="stmt-row-value">{{ fc(conn.bs_cash) }}</span>
+          </div>
+          <div class="stmt-row" id="bs-ar">
+            <span class="stmt-row-label">Accounts Receivable</span>
+            <span class="stmt-row-value">{{ fc(conn.bs_ar) }}</span>
+          </div>
+          <div class="stmt-row" id="bs-inv">
+            <span class="stmt-row-label">Inventory</span>
+            <span class="stmt-row-value">{{ fc(conn.bs_inv) }}</span>
+          </div>
+          <div class="stmt-row" id="bs-ppe">
+            <span class="stmt-row-label">Net PP&amp;E</span>
+            <span class="stmt-row-value">{{ fc(conn.bs_ppe) }}</span>
+          </div>
+          <div class="stmt-row stmt-subtotal" id="bs-total-assets">
+            <span class="stmt-row-label">Total Assets</span>
+            <span class="stmt-row-value">{{ fc(conn.bs_total_assets) }}</span>
+          </div>
+          <div class="stmt-section-label">Liabilities &amp; Equity</div>
+          <div class="stmt-row" id="bs-ap">
+            <span class="stmt-row-label">Accounts Payable</span>
+            <span class="stmt-row-value">{{ fc(conn.bs_ap) }}</span>
+          </div>
+          <div class="stmt-row" id="bs-debt">
+            <span class="stmt-row-label">Total Debt</span>
+            <span class="stmt-row-value">{{ fc(conn.bs_debt) }}</span>
+          </div>
+          <div class="stmt-row" id="bs-retained">
+            <span class="stmt-row-label">Retained Earnings</span>
+            <span class="stmt-row-value">{{ fc(conn.bs_retained) }}</span>
+          </div>
+          <div class="stmt-row stmt-total" id="bs-equity">
+            <span class="stmt-row-label">Total Equity</span>
+            <span class="stmt-row-value">{{ fc(conn.bs_equity) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- STATEMENT OF CHANGES IN EQUITY -->
+      <div class="stmt-card" id="stmtEquity">
+        <div class="stmt-card-header" style="--accent: #8B5CF6;">
+          <span class="stmt-title">Changes in Equity</span>
+          <span class="stmt-period">{{ periods[0] if periods else '' }}</span>
+        </div>
+        <div class="stmt-body">
+          <div class="stmt-row" id="scse-net-income">
+            <span class="stmt-row-label">Net Income (from IS)</span>
+            <span class="stmt-row-value">{{ fc(conn.scse_net_income) }}</span>
+          </div>
+          <div class="stmt-row" id="scse-div">
+            <span class="stmt-row-label">Dividends Paid</span>
+            <span class="stmt-row-value">{{ fc(conn.scse_div) }}</span>
+          </div>
+          <div class="stmt-row stmt-subtotal" id="scse-retained">
+            <span class="stmt-row-label">Retained Earnings</span>
+            <span class="stmt-row-value">{{ fc(conn.scse_retained) }}</span>
+          </div>
+          <div class="stmt-row stmt-total" id="scse-equity">
+            <span class="stmt-row-label">Total Equity</span>
+            <span class="stmt-row-value">{{ fc(conn.scse_equity) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- CASH FLOW STATEMENT -->
+      <div class="stmt-card" id="stmtCashflow">
+        <div class="stmt-card-header" style="--accent: #10B981;">
+          <span class="stmt-title">Cash Flow Statement</span>
+          <span class="stmt-period">{{ periods[0] if periods else '' }}</span>
+        </div>
+        <div class="stmt-body">
+          <div class="stmt-section-label">Operating Activities</div>
+          <div class="stmt-row" id="cfs-ni">
+            <span class="stmt-row-label">Net Income</span>
+            <span class="stmt-row-value">{{ fc(conn.cfs_ni) }}</span>
+          </div>
+          <div class="stmt-row" id="cfs-da">
+            <span class="stmt-row-label">Add: D&amp;A</span>
+            <span class="stmt-row-value">{{ fc(conn.cfs_da) }}</span>
+          </div>
+          <div class="stmt-row" id="cfs-wc">
+            <span class="stmt-row-label">Change in Working Capital</span>
+            <span class="stmt-row-value">{{ fc(conn.cfs_wc) }}</span>
+          </div>
+          <div class="stmt-row stmt-subtotal" id="cfs-ocf">
+            <span class="stmt-row-label">Operating Cash Flow</span>
+            <span class="stmt-row-value">{{ fc(conn.cfs_ocf) }}</span>
+          </div>
+          <div class="stmt-section-label">Investing Activities</div>
+          <div class="stmt-row" id="cfs-capex">
+            <span class="stmt-row-label">CapEx</span>
+            <span class="stmt-row-value">{{ fc(conn.cfs_capex) }}</span>
+          </div>
+          <div class="stmt-section-label">Financing Activities</div>
+          <div class="stmt-row" id="cfs-div">
+            <span class="stmt-row-label">Dividends Paid</span>
+            <span class="stmt-row-value">{{ fc(conn.cfs_div) }}</span>
+          </div>
+          <div class="stmt-row stmt-total" id="cfs-cash">
+            <span class="stmt-row-label">Ending Cash Balance</span>
+            <span class="stmt-row-value">{{ fc(conn.cfs_cash) }}</span>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /statements-grid -->
+  </div><!-- /statements-grid-wrapper -->
+</div>
+
+<!-- ===== SECTOR RATIOS ===== -->
+<div class="section-container">
+  <div class="section-header">
+    <h2 class="section-title">Financial Ratios</h2>
+    <p class="section-subtitle">{{ ratios.sector_label }} — sector-specific + universal metrics</p>
+  </div>
+  <div class="ratios-grid">
+    <!-- Sector-specific -->
+    {% if ratios.sector_ratios %}
+    <div class="ratios-group">
+      <div class="ratios-group-label">Sector Ratios</div>
+      <div class="ratios-row">
+        {% for r in ratios.sector_ratios %}
+        <div class="ratio-card">
+          <div class="ratio-value {% if r.value is none %}ratio-unavail{% endif %}">
+            {{ r.formatted }}
+          </div>
+          <div class="ratio-label">{{ r.label }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Universal -->
+    {% if ratios.universal_ratios %}
+    <div class="ratios-group">
+      <div class="ratios-group-label">Universal Metrics</div>
+      <div class="ratios-row">
+        {% for r in ratios.universal_ratios %}
+        <div class="ratio-card">
+          <div class="ratio-value {% if r.value is none %}ratio-unavail{% endif %}">
+            {{ r.formatted }}
+          </div>
+          <div class="ratio-label">{{ r.label }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ===== ANALYST NARRATIVE ===== -->
+<div class="section-container">
+  <div class="section-header">
+    <h2 class="section-title">Analyst Summary</h2>
+    <p class="section-subtitle">Rule-based, deterministic summary — not AI-generated. Not investment advice.</p>
+  </div>
+  <div class="narrative-card">
+    <div class="narrative-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
+        <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+        <polyline points="10 9 9 9 8 9"/>
+      </svg>
+    </div>
+    <div class="narrative-text">{{ narrative }}</div>
+  </div>
+</div>
+
+<!-- ===== PDF CTA ===== -->
+<div class="section-container">
+  <div class="pdf-cta-card">
+    <div class="pdf-cta-content">
+      <h3>Download Full PDF Report</h3>
+      <p>Get a professionally formatted report with charts, tables, and this analysis in a shareable PDF document.</p>
+    </div>
+    <a href="{{ url_for('report', ticker=ticker) }}" class="pdf-btn pdf-btn-large">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/>
+        <line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+      Download PDF Report
+    </a>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<!-- Pass server data to JS via data attributes -->
+<script id="vittaData" type="application/json">
+{
+  "ticker": {{ ticker | tojson }},
+  "chartLabels": {{ chart_labels | tojson }},
+  "chartRevenue": {{ chart_revenue | tojson }},
+  "chartNetIncome": {{ chart_net_income | tojson }},
+  "chartAssets": {{ chart_assets | tojson }},
+  "chartLiabilities": {{ chart_liabilities | tojson }}
+}
+</script>
+
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+<script src="{{ url_for('static', filename='js/connections.js') }}"></script>
+{% endblock %}

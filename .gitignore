@@ -1,0 +1,18 @@
+# Environment variables
+.env
+.env.*
+
+# Python virtual environment
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+
+# IDEs
+.vscode/
+.idea/
+
+# Reports
+reports/*.pdf
+.env

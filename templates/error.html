@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Error {{ code }} — Vitta{% endblock %}
+{% block content %}
+<div class="error-page">
+  <div class="error-page-inner">
+    <div class="error-code">{{ code }}</div>
+    <h1 class="error-title">
+      {% if code == 404 %}Page Not Found{% elif code == 500 %}Server Error{% else %}Something Went Wrong{% endif %}
+    </h1>
+    <p class="error-msg">{{ message }}</p>
+    <a href="{{ url_for('index') }}" class="analyze-btn" style="display:inline-flex;width:auto;">
+      ← Back to Home
+    </a>
+  </div>
+</div>
+{% endblock %}

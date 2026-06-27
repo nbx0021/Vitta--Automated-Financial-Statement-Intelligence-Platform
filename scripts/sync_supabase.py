@@ -9,6 +9,8 @@ import yfinance as yf
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
+import requests
+
 # Set up logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -22,6 +24,12 @@ if not SUPABASE_URL or not SUPABASE_KEY:
     raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set in environment.")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# Custom Session to avoid 429 errors
+session = requests.Session()
+session.headers.update({
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+})
 
 # Top 75 NSE Tickers (Sector-wise)
 TOP_75_TICKERS = [
@@ -49,7 +57,8 @@ TOP_75_TICKERS = [
 def _safe_ticker(ticker: str) -> yf.Ticker:
     if not ticker.upper().endswith(".NS"):
         ticker = ticker.upper() + ".NS"
-    return yf.Ticker(ticker.upper())
+    return yf.Ticker(ticker.upper(), session=session)
+
 
 
 def _transpose_and_clean(df: Optional[pd.DataFrame]) -> dict:
@@ -116,7 +125,7 @@ def main():
     logger.info("Starting Supabase Sync Job")
     for ticker in TOP_75_TICKERS:
         fetch_and_sync(ticker)
-        time.sleep(2)  # Avoid hammering yfinance too hard
+        time.sleep(4)  # Avoid hammering yfinance too hard
     logger.info("Sync Job Completed!")
 
 if __name__ == "__main__":

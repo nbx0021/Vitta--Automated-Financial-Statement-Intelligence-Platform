@@ -52,16 +52,16 @@ except ImportError:
 TOP_75_TICKERS = [
     # IT / Technology
     "TCS.NS", "INFY.NS", "HCLTECH.NS", "WIPRO.NS", "TECHM.NS",
-    "LTIM.NS", "PERSISTENT.NS", "COFORGE.NS", "MPHASIS.NS",
+    "LTIM.BO", "PERSISTENT.NS", "COFORGE.NS", "MPHASIS.NS",
     # Banking & Finance
     "HDFCBANK.NS", "ICICIBANK.NS", "SBIN.NS", "KOTAKBANK.NS", "AXISBANK.NS",
     "INDUSINDBK.NS", "BAJFINANCE.NS", "BAJAJFINSV.NS", "CHOLAFIN.NS",
     "MUTHOOTFIN.NS", "SBICARD.NS",
     # FMCG
-    "ITC.NS", "HUL.NS", "NESTLEIND.NS", "BRITANNIA.NS", "TATACONSUM.NS",
+    "ITC.NS", "HINDUNILVR.NS", "NESTLEIND.NS", "BRITANNIA.NS", "TATACONSUM.NS",
     "DABUR.NS", "GODREJCP.NS", "MARICO.NS", "COLPAL.NS", "UBL.NS",
     # Auto
-    "TATAMOTORS.NS", "M&M.NS", "MARUTI.NS", "BAJAJ-AUTO.NS", "HEROMOTOCO.NS",
+    "TATAMOTORS.BO", "M&M.NS", "MARUTI.NS", "BAJAJ-AUTO.NS", "HEROMOTOCO.NS",
     "EICHERMOT.NS", "TVSMOTOR.NS", "ASHOKLEY.NS", "BOSCHLTD.NS",
     # Energy & Oil/Gas
     "RELIANCE.NS", "ONGC.NS", "NTPC.NS", "POWERGRID.NS", "COALINDIA.NS",
@@ -82,8 +82,6 @@ def _make_ticker(ticker: str):
     """Create a yf.Ticker with curl_cffi session if available."""
     import yfinance as yf
     ticker = ticker.upper()
-    if not ticker.endswith(".NS"):
-        ticker += ".NS"
     if USE_CFFI and _session is not None:
         return yf.Ticker(ticker, session=_session)
     return yf.Ticker(ticker)

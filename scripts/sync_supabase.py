@@ -15,16 +15,36 @@ from dotenv import load_dotenv
 # the exact TLS/JA3 signature of a real Chrome browser.
 try:
     from curl_cffi.requests import Session as CurlSession
+    from curl_cffi.requests import Response as CurlResponse
+
+    class MockCookie:
+        def __init__(self, name, value):
+            self.name = name
+            self.value = value
+
+    class ResponseWrapper:
+        def __init__(self, response):
+            self._response = response
+            
+        def __getattr__(self, item):
+            return getattr(self._response, item)
+            
+        @property
+        def cookies(self):
+            c = self._response.cookies
+            if isinstance(c, dict):
+                return [MockCookie(k, v) for k, v in c.items()]
+            return c
 
     class SessionWrapper:
         def __init__(self):
             self._session = CurlSession(impersonate="chrome110")
             
         def get(self, *args, **kwargs):
-            return self._session.get(*args, **kwargs)
+            return ResponseWrapper(self._session.get(*args, **kwargs))
             
         def request(self, *args, **kwargs):
-            return self._session.request(*args, **kwargs)
+            return ResponseWrapper(self._session.request(*args, **kwargs))
             
         @property
         def headers(self):
@@ -36,19 +56,14 @@ try:
             
         @property
         def cookies(self):
-            class MockCookie:
-                def __init__(self, name, value):
-                    self.name = name
-                    self.value = value
             c = self._session.cookies
-            # curl_cffi < 0.8 uses a dict for cookies. yfinance iterates and expects .name and .value
             if isinstance(c, dict):
                 return [MockCookie(k, v) for k, v in c.items()]
             return c
 
     session = SessionWrapper()
     logger_temp = logging.getLogger(__name__)
-    logger_temp.info("Using curl_cffi session with cookie wrapper (Chrome TLS impersonation)")
+    logger_temp.info("Using curl_cffi session with cookie & response wrapper (Chrome TLS impersonation)")
 except ImportError:
     import requests
     session = requests.Session()

@@ -113,9 +113,15 @@ def fetch_and_sync(ticker: str):
         t = _make_ticker(ticker)
 
         # Fetch statements
-        inc_df = getattr(t, "income_stmt", None) or getattr(t, "financials", None)
+        inc_df = getattr(t, "income_stmt", None)
+        if inc_df is None or (hasattr(inc_df, 'empty') and inc_df.empty):
+            inc_df = getattr(t, "financials", None)
+            
         bal_df = getattr(t, "balance_sheet", None)
-        cf_df  = getattr(t, "cashflow", None) or getattr(t, "cash_flow", None)
+        
+        cf_df = getattr(t, "cashflow", None)
+        if cf_df is None or (hasattr(cf_df, 'empty') and cf_df.empty):
+            cf_df = getattr(t, "cash_flow", None)
 
         inc_data = _df_to_json(inc_df)
         bal_data = _df_to_json(bal_df)

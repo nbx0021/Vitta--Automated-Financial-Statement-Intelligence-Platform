@@ -9,7 +9,21 @@ import yfinance as yf
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
-import requests
+# Use curl_cffi to spoof a real Chrome TLS fingerprint.
+# Yahoo Finance (via Cloudflare) blocks cloud IPs at the TLS layer,
+# so a plain requests.Session() won't help. curl_cffi impersonates
+# the exact TLS/JA3 signature of a real Chrome browser.
+try:
+    from curl_cffi.requests import Session as CurlSession
+    session = CurlSession(impersonate="chrome110")
+    logger_temp = logging.getLogger(__name__)
+    logger_temp.info("Using curl_cffi session (Chrome TLS impersonation)")
+except ImportError:
+    import requests
+    session = requests.Session()
+    session.headers.update({
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    })
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -24,12 +38,6 @@ if not SUPABASE_URL or not SUPABASE_KEY:
     raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set in environment.")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-# Custom Session to avoid 429 errors
-session = requests.Session()
-session.headers.update({
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-})
 
 # Top 75 NSE Tickers (Sector-wise)
 TOP_75_TICKERS = [

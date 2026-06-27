@@ -1,6 +1,6 @@
 Flask==3.0.3
 Flask-Caching==2.3.0
-yfinance==0.2.40
+yfinance>=0.2.51
 pandas==2.2.2
 numpy==1.26.4
 matplotlib==3.9.0

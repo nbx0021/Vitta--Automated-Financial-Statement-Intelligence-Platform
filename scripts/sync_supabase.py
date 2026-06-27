@@ -15,9 +15,40 @@ from dotenv import load_dotenv
 # the exact TLS/JA3 signature of a real Chrome browser.
 try:
     from curl_cffi.requests import Session as CurlSession
-    session = CurlSession(impersonate="chrome110")
+
+    class SessionWrapper:
+        def __init__(self):
+            self._session = CurlSession(impersonate="chrome110")
+            
+        def get(self, *args, **kwargs):
+            return self._session.get(*args, **kwargs)
+            
+        def request(self, *args, **kwargs):
+            return self._session.request(*args, **kwargs)
+            
+        @property
+        def headers(self):
+            return self._session.headers
+            
+        @property
+        def proxies(self):
+            return self._session.proxies
+            
+        @property
+        def cookies(self):
+            class MockCookie:
+                def __init__(self, name, value):
+                    self.name = name
+                    self.value = value
+            c = self._session.cookies
+            # curl_cffi < 0.8 uses a dict for cookies. yfinance iterates and expects .name and .value
+            if isinstance(c, dict):
+                return [MockCookie(k, v) for k, v in c.items()]
+            return c
+
+    session = SessionWrapper()
     logger_temp = logging.getLogger(__name__)
-    logger_temp.info("Using curl_cffi session (Chrome TLS impersonation)")
+    logger_temp.info("Using curl_cffi session with cookie wrapper (Chrome TLS impersonation)")
 except ImportError:
     import requests
     session = requests.Session()
@@ -127,7 +158,9 @@ def fetch_and_sync(ticker: str):
         logger.info(f"Successfully synced {ticker}")
         
     except Exception as e:
+        import traceback
         logger.error(f"Error syncing {ticker}: {e}")
+        logger.error(traceback.format_exc())
 
 def main():
     logger.info("Starting Supabase Sync Job")

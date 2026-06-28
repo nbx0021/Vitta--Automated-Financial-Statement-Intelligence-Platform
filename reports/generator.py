@@ -104,7 +104,7 @@ def _render_trend_chart(normalized: dict, periods: list, company_name: str) -> i
     ax.set_xticks(list(x))
     ax.set_xticklabels(labels, color="#CBD5E1", fontsize=8)
     ax.yaxis.set_major_formatter(mticker.FuncFormatter(
-        lambda val, _: f"₹{val/1:.0f} Cr" if abs(val) < 1e6 else f"₹{val/1e3:.0f}K Cr"
+        lambda val, _: f"Rs.{val/1:.0f} Cr" if abs(val) < 1e6 else f"Rs.{val/1e3:.0f}K Cr"
     ))
     ax.tick_params(colors="#CBD5E1", labelsize=8)
     ax.spines["top"].set_visible(False)
@@ -112,7 +112,7 @@ def _render_trend_chart(normalized: dict, periods: list, company_name: str) -> i
     ax.spines["left"].set_color("#475569")
     ax.spines["bottom"].set_color("#475569")
     ax.yaxis.label.set_color("#CBD5E1")
-    ax.set_ylabel("₹ Crore", color="#CBD5E1", fontsize=9)
+    ax.set_ylabel("Rs. Crore", color="#CBD5E1", fontsize=9)
     ax.set_title(f"{company_name} — Revenue vs Net Income", color="#F1F5F9", fontsize=10, pad=10)
     legend = ax.legend(facecolor="#1E293B", edgecolor="#475569", labelcolor="#CBD5E1", fontsize=8)
     ax.grid(axis="y", color="#334155", linewidth=0.5, linestyle="--", alpha=0.5)
@@ -226,6 +226,9 @@ def generate_pdf(
     narrative: str,
     company_info: dict,
     periods: list,
+    piotroski: dict = None,
+    altman: dict = None,
+    dcf: dict = None,
 ) -> bytes:
     """
     Assemble and return the full PDF as bytes.
@@ -341,7 +344,7 @@ def generate_pdf(
             if s is None: return "—"
             v = float(s.iloc[idx])
             if math.isnan(v): return "—"
-            return f"₹ {v:,.1f} Cr"
+            return f"Rs. {v:,.1f} Cr"
         except Exception:
             return "—"
 
@@ -398,6 +401,54 @@ def generate_pdf(
     story.append(metrics_table)
     story.append(Spacer(1, 0.5*cm))
 
+    # --- Advanced Financial Modeling ---
+    if piotroski or altman or dcf:
+        story.append(Paragraph("Advanced Financial Modeling", styles["VittaH2"]))
+        
+        adv_rows = [
+            [Paragraph("Model", styles["VittaTableHeader"]),
+             Paragraph("Score / Value", styles["VittaTableHeader"]),
+             Paragraph("Interpretation", styles["VittaTableHeader"])]
+        ]
+        
+        if piotroski:
+            interp = "Average"
+            if isinstance(piotroski.get("score"), int):
+                if piotroski["score"] >= 7: interp = "Strong Financials"
+                elif piotroski["score"] <= 3: interp = "Weak Financials"
+            adv_rows.append(["Piotroski F-Score", f"{piotroski.get('score', 'N/A')}/9", interp])
+            
+        if altman:
+            adv_rows.append(["Altman Z-Score", str(altman.get('score', 'N/A')), altman.get('zone', 'N/A')])
+            
+        if dcf:
+            val = dcf.get("intrinsic_value", "N/A")
+            if isinstance(val, (int, float)):
+                val = f"Rs. {val}"
+            margin = dcf.get("margin_of_safety", "N/A")
+            if isinstance(margin, (int, float)):
+                margin = f"{margin}% Margin of Safety"
+            adv_rows.append(["DCF Intrinsic Value", val, margin])
+            
+        adv_table = Table(adv_rows, colWidths=[6*cm, 4*cm, 7*cm])
+        adv_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), BRAND_DARK),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, 0), 9),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [LIGHT_GRAY, colors.white]),
+            ("GRID", (0, 0), (-1, -1), 0.5, MID_GRAY),
+            ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+            ("FONTSIZE", (0, 1), (-1, -1), 9),
+            ("TEXTCOLOR", (0, 1), (-1, -1), TEXT_DARK),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ]))
+        story.append(adv_table)
+        story.append(Spacer(1, 0.5*cm))
+
     # --- Trend chart ---
     story.append(Paragraph("Revenue vs Net Income Trend", styles["VittaH2"]))
     try:
@@ -416,7 +467,7 @@ def generate_pdf(
     story.append(Paragraph(
         f"Data source: Yahoo Finance (yfinance), generated on {today}. "
         "For informational purposes only — not investment advice. "
-        "All monetary figures in ₹ Crore.",
+        "All monetary figures in Rs. Crore.",
         styles["VittaFooter"]
     ))
 

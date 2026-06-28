@@ -10,7 +10,13 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from datetime import date
+import pandas as pd
+from dotenv import load_dotenv
+
+# Load environment variables first
+load_dotenv()
 
 from flask import Flask, abort, redirect, render_template, request, send_file, url_for
 from flask_caching import Cache
@@ -23,6 +29,13 @@ from data.validation import run_all_checks
 from reports.generator import generate_pdf
 
 import io
+import json
+import google.generativeai as genai
+
+# Configure Gemini AI (if key is provided)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -91,6 +104,14 @@ def run_pipeline(ticker: str) -> dict:
     )
 
     narrative = build_narrative(normalized, ratios, checks, company_name, periods)
+    
+    # Advanced Financial Modeling
+    from data.models import calculate_piotroski_f_score, calculate_altman_z_score, calculate_simple_dcf
+    
+    # We pass the normalized data to models because models.py now expects normalized Series
+    piotroski = calculate_piotroski_f_score(normalized.get("income", {}), normalized.get("balance", {}), normalized.get("cashflow", {}))
+    altman = calculate_altman_z_score(normalized.get("income", {}), normalized.get("balance", {}), info)
+    dcf = calculate_simple_dcf(normalized.get("cashflow", {}), info)
 
     return {
         "ticker": ticker,
@@ -101,6 +122,9 @@ def run_pipeline(ticker: str) -> dict:
         "ratios": ratios,
         "periods": periods,
         "narrative": narrative,
+        "piotroski": piotroski,
+        "altman": altman,
+        "dcf": dcf,
         "as_of": date.today().strftime("%d %B %Y"),
     }
 
@@ -252,6 +276,9 @@ def analyze(ticker: str):
         ratios=data["ratios"],
         checks=data["checks"],
         narrative=data["narrative"],
+        piotroski=data.get("piotroski", {"score": "N/A"}),
+        altman=data.get("altman", {"score": "N/A"}),
+        dcf=data.get("dcf", {"intrinsic_value": "N/A", "margin_of_safety": "N/A"}),
         periods=periods,
         as_of=data["as_of"],
 
@@ -276,7 +303,77 @@ def analyze(ticker: str):
     )
 
 
-@app.route("/report/<ticker>")
+from flask import Response, stream_with_context
+
+@app.route("/api/chat", methods=["POST"])
+def api_chat():
+    if not GEMINI_API_KEY:
+        return {"error": "Gemini API key is not configured in .env"}, 500
+        
+    req = request.get_json()
+    ticker = req.get("ticker", "").upper()
+    query = req.get("query", "")
+    
+    if not ticker or not query:
+        return {"error": "Missing ticker or query"}, 400
+        
+    try:
+        data = run_pipeline(ticker)
+    except Exception as e:
+        return {"error": f"Could not load data for {ticker}: {str(e)}"}, 400
+        
+    # Build a tight context string for the AI
+    info = data["info"]
+    ratios = data["ratios"]
+    company_name = data["company_name"]
+    narrative = data["narrative"]
+    piotroski = data.get("piotroski", {}).get("score", "N/A")
+    altman = data.get("altman", {}).get("score", "N/A")
+    dcf = data.get("dcf", {}).get("intrinsic_value", "N/A")
+    
+    system_prompt = f"""You are a professional financial AI assistant built into the Vitta platform.
+The user is looking at the financial dashboard for {company_name} ({ticker}).
+Sector: {ratios.get('sector_label', 'Unknown')}
+Business Summary: {info.get('longBusinessSummary', 'Not available')}
+
+Key Metrics:
+Gross Margin: {ratios.get('gross_margin', 'N/A')}%
+Net Margin: {ratios.get('net_margin', 'N/A')}%
+ROE: {ratios.get('roe', 'N/A')}%
+Debt/EBITDA: {ratios.get('debt_ebitda', 'N/A')}x
+Current Ratio: {ratios.get('current_ratio', 'N/A')}x
+Piotroski F-Score: {piotroski}/9
+Altman Z-Score: {altman}
+DCF Intrinsic Value: {dcf}
+
+Analyst Summary:
+{narrative}
+
+Use this financial data and business context to answer their question accurately. 
+If they ask for "reasons" for revenue growth or similar, use the Business Summary and Analyst Summary to infer or explicitly state that exact reasons require looking at the company's annual report, but provide the context you have.
+Keep your response concise, professional, and formatted in Markdown.
+Do not use conversational filler like 'Sure!'.
+"""
+
+    def generate():
+        try:
+            model = genai.GenerativeModel("gemini-2.5-flash", system_instruction=system_prompt)
+            response = model.generate_content(query, stream=True)
+            
+            # Emit a "thought" block so the frontend knows we are thinking
+            yield f"data: {json.dumps({'type': 'THOUGHT', 'content': 'Analyzing financial data...'})}\n\n"
+            
+            for chunk in response:
+                if chunk.text:
+                    yield f"data: {json.dumps({'type': 'FINAL_RESPONSE', 'content': chunk.text})}\n\n"
+        except Exception as e:
+            logger.error("Gemini API error: %s", e)
+            yield f"data: {json.dumps({'type': 'ERROR', 'content': 'Failed to generate response. Check your API key.'})}\n\n"
+            
+    return Response(stream_with_context(generate()), mimetype='text/event-stream')
+
+
+@app.route("/report/<ticker>.pdf")
 def report(ticker: str):
     ticker = normalize_ticker(ticker)
     try:
@@ -296,6 +393,9 @@ def report(ticker: str):
             narrative=data["narrative"],
             company_info=data["info"],
             periods=data["periods"],
+            piotroski=data.get("piotroski", {"score": "N/A"}),
+            altman=data.get("altman", {"score": "N/A"}),
+            dcf=data.get("dcf", {"intrinsic_value": "N/A", "margin_of_safety": "N/A"}),
         )
     except Exception as exc:
         logger.exception("PDF generation error for %s", ticker)
@@ -304,12 +404,10 @@ def report(ticker: str):
     safe_ticker = ticker.replace(".NS", "").replace(".", "_")
     filename = f"Vitta_{safe_ticker}_Report_{date.today()}.pdf"
 
-    return send_file(
-        io.BytesIO(pdf_bytes),
-        mimetype="application/pdf",
-        as_attachment=True,
-        download_name=filename,
-    )
+    response = Response(pdf_bytes, mimetype="application/pdf")
+    response.headers["Content-Disposition"] = f"attachment; filename={filename}"
+    response.headers["Content-Length"] = str(len(pdf_bytes))
+    return response
 
 
 # ---------------------------------------------------------------------------
